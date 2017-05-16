@@ -10,7 +10,7 @@
 const { Command } = require('discord-akairo');
 
 //import BaseCommand from "../base";
-const Promise = require('bluebird');
+//const Promise = require('bluebird');
 const request = require('request');
 const _ = require('lodash');
 const constants = require('./gunsmith-util/showoff-constants');
@@ -20,11 +20,11 @@ const SHOW_ARMOR = true;
 
 // callback handler function:
 // (when the command runs, this is what gets called)
-function exec(message, args) {
+async function exec(message, args) {
 	// instantiate a new instance of the Bungie Data Helper class
 	// (from the bungie-data-helper.js library)
 
-    dataHelper = DataHelper;
+//    dataHelper = new DataHelper();
     
     // Resolve network/platform type
     platform = 0;
@@ -35,7 +35,8 @@ function exec(message, args) {
 	let player, characterId, itemId, details;
         try {
         	console.log('exec: gear=%j, name=%j, platform=%j:%j', args.gear_piece, args.user, args.platform, platform);
-            player = _resolveId(platform, args.user);
+            player =  await 
+            	_resolveId(platform, args.user);
         } catch (e) {
 /*            let nickname = resp.envelope.user.nickname;
 
@@ -53,45 +54,41 @@ function exec(message, args) {
 
             }
             if (e)
-                return _handleError(resp, e)
+                return _handleError(message, e)
 */        }
 
-        console.log('exec: player=%j', player);
+        console.log('exec: player.platform=%j, player.id=%j', player.platform, player.id);
 
         try {
-            characterId = 
+            characterId = await
             	_getCharacterId(player.platform, player.id);
             	
             	
         } catch (e) {
-            return _handleError(resp, e)
+            return _handleError(message, e)
         }
         console.log('exec: characterId=%j', characterId);
 
 	// Retrieve gear item
-
-//        try {
-/*DF            itemId = await  _getItemIdFromSummary(
+        try {
+            itemId = await _getItemIdFromSummary(
                 player.platform, player.id,
-                characterId, _getBucket(bucket));
-        console.log('exec: itemId=%j', itemId);                
-*/
-//        } catch (e) {
-//
-////            return this._handleError(resp, e)
-//        }
-//
-//        try {
-//            details = await this._getItemDetails(
-//                player.platform, player.id, characterId, itemId);
-//        } catch (e) {
-////            return this._handleError(resp, e)
-//        }
+                characterId, _getBucket(args.gear_piece));
+        } catch (e) {
+            return _handleError(message, e)
+        }
+        console.log('exec: itemId=%j', itemId);        
 
+        try {
+            itemDetails = await _getItemDetails(
+                player.platform, player.id, characterId, itemId);
+        } catch (e) {
+            return _handleError(message, e)
+        }
+        console.log('exec: itemDetails=%j', itemDetails);
 
-	
 /*DF
-        let message = dataHelper.parsePayload(details);
+        let message = dataHelper.parsePayload(itemDetails);
         this.log.debug('message = %j', message);
         return message.reply(message)
 */
@@ -143,22 +140,14 @@ module.exports = new Command('gunsmith', exec, {
         
 });
 
-// Function to handle Error messages
-function GunsmithError(message, extra) {
-    name = constructor.name;
-    message = message;
-    extra = extra;
-    Error.captureStackTrace(this, this.constructor);
-}
-
 // Function to take the membershipType (i.e. platform) and the name (userName)
 // and return whether the character exists.
-function _resolveId(membershipType, name) {
+async function _resolveId(membershipType, name) {
 	if (membershipType) {
 		console.log('_resolveId: membershipType=%j, name=%j', membershipType, name);
 		return _getPlayerId(membershipType, name);
 	}
-/*	return Promise.all([
+	return Promise.all([
 		_getPlayerId(1, name.split('_').join(' ')),
 		_getPlayerId(2, name)
 	]).then(results => {
@@ -172,12 +161,12 @@ function _resolveId(membershipType, name) {
 		}
 		throw new GunsmithError(`Could not find guardian with name: ${name} on either platform.`)
 	})
-*/
+
 }
 
 // Function to take the membershipType (i.e. platform) and the name (userName)
 // and return the playerID number.
-function _getPlayerId(membershipType, name) {
+async function _getPlayerId(membershipType, name) {
 	const endpoint = `SearchDestinyPlayer/${membershipType}/${name}`;
 	let networkName = (membershipType === 1 ? 'xbox' : 'psn');
 	console.log('_getPlayerId: networkName=%j, endpoint=%j', networkName, endpoint);
@@ -197,7 +186,7 @@ function _getPlayerId(membershipType, name) {
 
 // Function to take the membershipType (i.e. platform) and the playerId (bungie)
 // and return the characterId number.
-function _getCharacterId(membershipType, playerId) {
+async function _getCharacterId(membershipType, playerId) {
 	const endpoint = `${membershipType}/Account/${playerId}`;
 	console.log('_getCharacterId: networkName=%j, playerId=%j, endpoint=%j', membershipType, playerId, endpoint);
 
@@ -214,7 +203,7 @@ function _getCharacterId(membershipType, playerId) {
 
 // Function to take the membershipType,playerId,characterId pull the Inventory
 // and find the Id of the item in the requested slot.
-function _getItemIdFromSummary(membershipType, playerId, characterId, bucket) {
+async function _getItemIdFromSummary(membershipType, playerId, characterId, bucket) {
 	const endpoint = `${membershipType}/Account/${playerId}/Character/${characterId}/Inventory/Summary`;
 	console.log('_getItemIdFromSummary: networkName=%j, playerId=%j, characterId=%j, endpoint=%j', membershipType, playerId, characterId, endpoint);
 	return api(endpoint)
@@ -234,18 +223,21 @@ function _getItemIdFromSummary(membershipType, playerId, characterId, bucket) {
 		})
 }
 
-/*DF
-function  _getItemDetails(membershipType, playerId, characterId, itemInstanceId) {
+// Subroutine that takes the specific itemId and pulls the details on that
+// item from the Destiny DB
+async function _getItemDetails(membershipType, playerId, characterId, itemInstanceId) {
 	const endpoint = `${membershipType}/Account/${playerId}/Character/${characterId}/Inventory/${itemInstanceId}`;
 	const params = 'definitions=true';
-
-	return this.api(endpoint, params)
+	console.log('_getItemIdDetails: endpoint=%j, params=%j', endpoint, params);
+	return api(endpoint, params)
 		.then(resp => {
-			return this.dataHelper.serializeFromApi(resp)
+			return dataHelper.serializeFromApi(resp)
 		})
 }
-/*
-/*DF
+
+
+// Subroutine that takes the gear item "name" fed into the command line
+// and returns the JSON id tied to the Character Slot we're looking for.
 function _getBucket(slot) {
 	switch (slot) {
 		case 'primary':
@@ -291,11 +283,11 @@ function _getBucket(slot) {
 			null;
 	}
 }
-*/
+
 
 // Function to take access the Bungie JSON API via the supplied "endpint"
 // and "params"
-function api(endpoint, params) {
+async function api(endpoint, params) {
 	const BUNGIE_API_KEY = process.env.BUNGIE_API_KEY;
 	const baseUrl = 'https://www.bungie.net/Platform/Destiny/';
 	const trailing = '/';
@@ -310,16 +302,24 @@ function api(endpoint, params) {
 		}, (err, res, body) => {
 			console.log('api: err=%j', err);
 //			console.log('api: res=%j', res);
-			console.log('api: body=%j', body);			
+//			console.log('api: body=%j', body);			
 			let object = JSON.parse(body);
 			resolve(object.Response);
 		});
-
 	});
 }
 
-function _handleError(resp, e) {
-	this.log.error(e.stack || e);
-	resp.envelope.room = resp.envelope.user.id;
-	return resp.send(this.text.error.add(e.message).e);
+// Generic Error Handler to dump error code back to console
+function _handleError(message, e) {
+	//log.error(e.stack || e);
+	return message.reply(e.message);
 }
+
+// Function to handle Error messages
+function GunsmithError(message, extra) {
+    name = constructor.name;
+    message = message;
+    extra = extra;
+    Error.captureStackTrace(this, this.constructor);
+}
+

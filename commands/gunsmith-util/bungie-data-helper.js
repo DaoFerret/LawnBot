@@ -167,4 +167,4 @@ class DataHelper {
     }
 }
 
-module.exports = DataHelper;
+module.exports = "APIutils";
