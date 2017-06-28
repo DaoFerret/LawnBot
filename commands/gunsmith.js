@@ -14,7 +14,7 @@ const { Command } = require('discord-akairo');
 const request = require('request');
 const _ = require('lodash');
 const constants = require('./gunsmith-util/showoff-constants');
-const {DataHelper} = require('./gunsmith-util/bungie-data-helper');
+//const dataHelper = require('./gunsmith-util/bungie-data-helper');
 ////request.debug = true;
 const SHOW_ARMOR = true;
 
@@ -23,13 +23,15 @@ const SHOW_ARMOR = true;
 async function exec(message, args) {
 	// instantiate a new instance of the Bungie Data Helper class
 	// (from the bungie-data-helper.js library)
-
+	// CODE BROUGHT INTO THIS FILE
 //    dataHelper = new DataHelper();
     
     // Resolve network/platform type
     platform = 0;
     if (args.platform === 'psn') { platform = 2; }
     else if (args.platform === 'xbox') { platform = 1; }
+	
+	if (args.user === '') { return message.reply('command: !gunsmith <slot> <character_name> [console]') }
 	
 	// Validate user
 	let player, characterId, itemId, details;
@@ -38,11 +40,11 @@ async function exec(message, args) {
             player =  await 
             	_resolveId(platform, args.user);
         } catch (e) {
-/*            let nickname = resp.envelope.user.nickname;
-
+            let nickname = message.author;
+        	console.log('exec: no userid using author=%j', message.author);
             if (nickname) {
 
-                membershipType = this._parseNetwork(nickname);
+                membershipType = _parseNetwork(nickname);
                 name = _parseName(nickname);
                 try {
                     player = await
@@ -55,7 +57,7 @@ async function exec(message, args) {
             }
             if (e)
                 return _handleError(message, e)
-*/        }
+        }
 
         console.log('exec: player.platform=%j, player.id=%j', player.platform, player.id);
 
@@ -85,13 +87,12 @@ async function exec(message, args) {
         } catch (e) {
             return _handleError(message, e)
         }
-        console.log('exec: itemDetails=%j', itemDetails);
+//        console.log('exec: itemDetails=%j', itemDetails);
 
-/*DF
-        let message = dataHelper.parsePayload(itemDetails);
-        this.log.debug('message = %j', message);
-        return message.reply(message)
-*/
+        let outputMessage = parsePayload(itemDetails);
+        console.log('message = %j', outputMessage);
+        return message.reply(outputMessage)
+
 //    	return message.reply(args.gear_piece+''+args.user+''+args.platform+platform);
   	
 }
@@ -231,7 +232,7 @@ async function _getItemDetails(membershipType, playerId, characterId, itemInstan
 	console.log('_getItemIdDetails: endpoint=%j, params=%j', endpoint, params);
 	return api(endpoint, params)
 		.then(resp => {
-			return dataHelper.serializeFromApi(resp)
+			return serializeFromApi(resp)
 		})
 }
 
@@ -300,7 +301,7 @@ async function api(endpoint, params) {
 				'X-API-Key': BUNGIE_API_KEY
 			}
 		}, (err, res, body) => {
-			console.log('api: err=%j', err);
+//			console.log('api: err=%j', err);
 //			console.log('api: res=%j', res);
 //			console.log('api: body=%j', body);			
 			let object = JSON.parse(body);
@@ -312,7 +313,7 @@ async function api(endpoint, params) {
 // Generic Error Handler to dump error code back to console
 function _handleError(message, e) {
 	//log.error(e.stack || e);
-	return message.reply(e.message);
+	return message.author.send(e.message);
 }
 
 // Function to handle Error messages
@@ -323,3 +324,171 @@ function GunsmithError(message, extra) {
     Error.captureStackTrace(this, this.constructor);
 }
 
+
+// helper function to take the item tree and serialize it/clean it up
+function serializeFromApi(response) {
+	let damageTypeName;
+	let {item} = response.data;
+	let hash = item.itemHash;
+	let itemDefs = response.definitions.items[hash];
+
+//	console.log('serialzeFromApi: response=%j', response);
+
+	// some weapons return an empty hash for definitions.damageTypes
+	if (Object.keys(response.definitions.damageTypes).length !== 0) {
+		({damageTypeName} = response.definitions.damageTypes[item.damageTypeHash]);
+	} else {
+		damageTypeName = 'Kinetic';
+		console.log(Object.keys(response.definitions.damageTypes).length);
+		console.log(`damageType empty for ${itemDefs.itemName}`);
+	}
+	let stats = {};
+	// for stat in item.stats
+	let itemStats = item.stats;
+
+	if (item.damageType !== 0) {
+		// to expand using all the hidden stats, use the code below
+		// itemStatHashes = ( "#{x.statHash}" for x in item.stats )
+		// for h, s of response.definitions.items[hash].stats when h not in itemStatHashes
+		//   itemStats.push s
+
+		// to expand using a smaller list, match against EXTENDED_WEAPON_STATS
+		for (let extHash of Array.from(constants.EXTENDED_WEAPON_STATS)) {
+			let s = response.definitions.items[hash].stats[extHash];
+			if (s !== null) {
+				itemStats.push(s);
+			}
+		}
+	}
+
+	let statHashes = constants.STAT_HASHES;
+	for (let stat of Array.from(itemStats)) {
+		if ((stat !== null ? stat.statHash : undefined) in statHashes) {
+			stats[statHashes[stat.statHash]] = stat.value;
+		}
+	}
+
+	let prefix = 'https://www.bungie.net';
+	let iconSuffix = itemDefs.icon;
+	let itemSuffix = `/en/Armory/Detail?item=${hash}`;
+
+	return {
+		itemName: itemDefs.itemName,
+		itemDescription: itemDefs.itemDescription,
+		itemTypeName: itemDefs.itemTypeName,
+		color: parseInt(constants.DAMAGE_COLOR[damageTypeName], 16),
+		iconLink: prefix + iconSuffix,
+		itemLink: prefix + itemSuffix,
+		nodes: response.data.talentNodes,
+		nodeDefs: response.definitions.talentGrids[item.talentGridHash].nodes,
+		damageType: damageTypeName,
+		stats
+	};
+}
+
+// Parse the Item Data into the displayed output
+function parsePayload(item) {
+	let name = `${item.itemName}`;
+	if (item.damageType !== "Kinetic") {
+		name += ` [${item.damageType}]`;
+	}
+	let filtered = filterNodes(item.nodes, item.nodeDefs);
+	let textHash = buildText(filtered, item.nodeDefs, item);
+	let footerText = buildFooter(item);
+
+	return {
+		text: '',
+		embed: {
+			title: name,
+			description: item.itemDescription,
+			url: item.itemLink,
+			color: item.color,
+			fields: _.map(textHash, (string, column) => {
+				return {
+					name: `Column ${column}`,
+					value: string
+				}
+			}),
+
+
+			footer: {
+				text: footerText
+			},
+			thumbnail: {
+				url: item.iconLink,
+				width: 60,
+				height: 60
+			}
+		}
+
+	};
+}
+
+// removes invalid nodes, orders according to column attribute
+function filterNodes(nodes, nodeDefs) {
+	let validNodes = [];
+	let invalid = function (node) {
+		let name = nodeDefs[node.nodeIndex].steps[node.stepIndex].nodeStepName;
+		let skip = ["Upgrade Damage", "Void Damage", "Solar Damage", "Arc Damage", "Kinetic Damage", "Ascend", "Reforge Ready", "Deactivate Chroma", "Red Chroma", "Blue Chroma", "Yellow Chroma", "White Chroma"];
+		return (node.stateId === "Invalid") || (node.hidden === true) || Array.from(skip).includes(name);
+	};
+
+	for (var node of Array.from(nodes)) {
+		if (!invalid(node)) {
+			validNodes.push(node);
+		}
+	}
+
+	let orderedNodes = [];
+	let column = 0;
+	while (orderedNodes.length < validNodes.length) {
+		let idx = 0;
+		while (idx < validNodes.length) {
+			node = validNodes[idx];
+			let nodeColumn = nodeDefs[node.nodeIndex].column;
+			if (nodeColumn === column) {
+				orderedNodes.push(node);
+			}
+			idx++;
+		}
+		column++;
+	}
+	return orderedNodes;
+}
+
+// takes the filtered text and builds the displayed node values
+function buildText(nodes, nodeDefs, item) {
+	let getName = function (node) {
+		let step = nodeDefs[node.nodeIndex].steps[node.stepIndex];
+		return step.nodeStepName;
+	};
+
+	let text = {};
+	let setText = function (node) {
+		let step = nodeDefs[node.nodeIndex].steps[node.stepIndex];
+		let {column} = nodeDefs[node.nodeIndex];
+		let name = step.nodeStepName;
+		if (node.isActivated) {
+			name = `**${step.nodeStepName}**`;
+		}
+		if (!text[column]) {
+			text[column] = "";
+		}
+		return text[column] += (text[column] ? ' | ' : '') + name;
+	};
+
+	for (let node of Array.from(nodes)) {
+		setText(node);
+	}
+	return text;
+}
+
+// orders the stats that go in the footer for display
+function buildFooter(item) {
+	let stats = [];
+	for (let statName in item.stats) {
+		let statValue = item.stats[statName];
+		stats.push(`${statName}: ${statValue}`);
+	}
+	return stats.join(', ');
+}

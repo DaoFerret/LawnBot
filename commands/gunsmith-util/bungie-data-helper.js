@@ -2,12 +2,14 @@
 
 const constants = require('./showoff-constants');
 const _ = require('lodash');
-class DataHelper {
-    serializeFromApi(response) {
+//class DataHelper {
+    function serializeFromApi(response) {
         let damageTypeName;
         let {item} = response.data;
         let hash = item.itemHash;
         let itemDefs = response.definitions.items[hash];
+
+        console.log('DataHelper.serialzeFromApi: response=%j', response);
 
         // some weapons return an empty hash for definitions.damageTypes
         if (Object.keys(response.definitions.damageTypes).length !== 0) {
@@ -61,7 +63,7 @@ class DataHelper {
         };
     }
 
-    parsePayload(item) {
+    function parsePayload(item) {
         let name = `${item.itemName}`;
         if (item.damageType !== "Kinetic") {
             name += ` [${item.damageType}]`;
@@ -99,7 +101,7 @@ class DataHelper {
     }
 
     // removes invalid nodes, orders according to column attribute
-    filterNodes(nodes, nodeDefs) {
+    function filterNodes(nodes, nodeDefs) {
         let validNodes = [];
         let invalid = function (node) {
             let name = nodeDefs[node.nodeIndex].steps[node.stepIndex].nodeStepName;
@@ -130,7 +132,7 @@ class DataHelper {
         return orderedNodes;
     }
 
-    buildText(nodes, nodeDefs, item) {
+    function buildText(nodes, nodeDefs, item) {
         let getName = function (node) {
             let step = nodeDefs[node.nodeIndex].steps[node.stepIndex];
             return step.nodeStepName;
@@ -157,7 +159,7 @@ class DataHelper {
     }
 
     // stats go in the footer
-    static buildFooter(item) {
+    function buildFooter(item) {
         let stats = [];
         for (let statName in item.stats) {
             let statValue = item.stats[statName];
@@ -165,6 +167,6 @@ class DataHelper {
         }
         return stats.join(', ');
     }
-}
+//}
 
-module.exports = "APIutils";
+return module.exports;
