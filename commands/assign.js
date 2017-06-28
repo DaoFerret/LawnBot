@@ -8,12 +8,17 @@ function exec(message, args) {
     //---
     // Check if the user is currently a member of any TZ Groups
     //---
-    // grab the roles we're interested in.
+    // grab the roles we're interested in:
+    // mutually exclusive TZ roles
     let rolePST = message.guild.roles.find("name", "USWest");
     let roleEST = message.guild.roles.find("name", "USEast");
     let roleGMT = message.guild.roles.find("name", "EUWest");
     let roleMSK = message.guild.roles.find("name", "EUEast");
     let roleLST = message.guild.roles.find("name", "Other");
+    
+    // toggle roles:
+    let roleRaidRookie = message.guild.roles.find("name", "raidrookie");
+    
     let currentRole;
     (DEBUG) && message.reply ("\n"+'Roles: rolePST='+rolePST+
                         "\n"+'Roles: roleEST='+roleEST+
@@ -54,19 +59,36 @@ function exec(message, args) {
     // If we don't have an arg, spit out the help message and exit
     if (args.location == '') {
         (DEBUG) && message.reply ("processing blank location");
-        return message.reply('command: !assign [ USWest | USEast | EUWest | EUEast | Other | none (to remove)]');
+        return message.reply('command: !assign [ USWest | USEast | EUWest | EUEast | Other | none (to remove)]\n'
+                            +'\t[raidrookie] - toggles raidrookie status on/off');
 
-    } else if (args.location == 'none') {
-        // Unassign from former location role
+    } 
+    
+    // if we do have a location:
+    if (args.location == 'none') {
+        // Unassign from raidrookie (if its set)
+        if (message.member.roles.has(roleRaidRookie.id)) {
+            // clear the role from the member
+            message.member.removeRole(roleRaidRookie);
+            message.reply('Removed from role: '+roleRaidRookie+'.');
+        }
+        // Unassign from former location role (if there is one)
         //member.removeRole(currentRole).catch(console.error);
-        if (currentRole) { message.member.removeRole(currentRole); }
-
+        if (currentRole) { 
+            (DEBUG) && message.reply ("processing 'none'");
+            message.member.removeRole(currentRole);
+            return message.reply('Removed from role: '+currentRole+'.');
+        }
+    } 
+    
     // Otherwise we use the new location role to process the user
-    } else {
+    if ((args.location == 'PST') || (args.location == 'EST') || 
+        (args.location == 'GMT') || (args.location == 'MSK') || 
+        (args.location == 'LST')) {
         (DEBUG) && message.reply ("processing new location role");
         // if the new role is the same as the current, ignore it all and exit.
         if (currentRole == newRole) {
-            return message.reply('Already assigned to '+currentRole+'.');
+            return message.reply('Already assigned to: '+currentRole+'.');
         } else {
             // Unassign from former location role
             //member.removeRole(currentRole).catch(console.error);
@@ -74,14 +96,25 @@ function exec(message, args) {
             // Assign to new location role
             //member.addRole(newRole).catch(console.error);
             message.member.addRole(newRole);
-            return message.reply('Welcome to '+newRole);
+            return message.reply('Welcome to: '+newRole+'.');
         }
     }
 
+    // if we're toggling raidrookie:
+    if (args.location == 'raidrookie') {
+        // If the member has the role already
+        if (message.member.roles.has(roleRaidRookie.id)) {
+            // clear the role from the member
+            message.member.removeRole(roleRaidRookie);
+            return message.reply('Removed from: '+roleRaidRookie+'.');
+        } else {
+            // else assign the role to the member
+            message.member.addRole(roleRaidRookie);
+            return message.reply('Welcome to: '+roleRaidRookie+'.');
+        }
+    }
 
-
-    
-    //return message.reply('Pong!');
+    return message.reply('Guru Meditation Error: Please tell the sysadmin the left front wheel fell off of LawnBot');
 }
 
 module.exports = new Command('assign', exec, {
@@ -97,7 +130,8 @@ module.exports = new Command('assign', exec, {
                 ['GMT', 'UK', 'Europe West', 'Western Europe', 'EUWest'],
                 ['MSK', 'Europe East', 'Eastern Europe', 'EUEast'],
                 ['LST', 'AETZ', 'Other', 'Lunar'],
-                ['none']
+                ['none'],
+                ['raidrookie']
             ],
             default: ''
         }
