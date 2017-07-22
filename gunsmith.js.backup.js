@@ -23,8 +23,7 @@ const SHOW_ARMOR = true;
 
 function GunsmithError(message, extra) {
 
-    this.name = this.con:0
-structor.name;
+    this.name = this.constructor.name;
     this.message = message;
     this.extra = extra;
     Error.captureStackTrace(this, this.constructor);

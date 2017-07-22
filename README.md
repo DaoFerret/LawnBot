@@ -14,6 +14,17 @@ As such the Gunsmith code is pretty much just copy/paste, move things around til
 
 Subsequently my Clan decided to add the ability for members to "self-assign" into roles on Discord so they tag themselves into regional groups.
 The assign module (located in the commands directory) was born and is a from scratch bit of my own code allowing them to do just that.
-It relies on 5 pre-existing Roles (USWest, USEast, EUWest, EUEast, Other), and it relies on this bot being allowed to make modifications to those roles.
+It relies on 4 pre-existing Roles (USWest, USEast, Europe, Daytime), and it relies on this bot being allowed to make modifications to those roles.
 
-The latest module that's been requested is a module to monitor those streamers in our group so we can assign and unassign them to a "Streamer" category to pop their names up on the roster when they are streaming.  We'll see how that goes.
+The latest module that's been requested is a module to monitor those streamers in our group so we can assign and unassign them to a "Streamer" category to pop their names up on the roster when they are streaming.
+
+Latest update:
+- complete rework of the assign module so it now has four mutually exclusive "roles" and a single togglable role (and can easily be extended, modified, changed)
+- twitch monitoring mod done. simple DB that monitors selected twitch_ids (saved in an sqlite3 database) and queries the twitch_API to see if they are streaming every x minutes.  If they are, then it makes sure they are in the Streamer Showcase Role (which is preset to "twitch" purple and pops up to the top of the logged in users).
+- add the countdown command for the beta (its been a hit).  Will rewrite the command with the release date post beta (and the PC release date after that? ... probably rewrite for future DLC?)
+
+ToDo:
+- Refactor the twitch module so the code is cleaner (as I learn about async and await).
+- Update the code so the twitch module produces stats.
+- add try/catch/.catch blocks where needed to properly handle errors in the whole thing.
+- add the "say" module.
