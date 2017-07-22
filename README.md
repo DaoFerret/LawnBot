@@ -22,9 +22,9 @@ Latest update:
 - complete rework of the assign module so it now has four mutually exclusive "roles" and a single togglable role (and can easily be extended, modified, changed)
 - twitch monitoring mod done. simple DB that monitors selected twitch_ids (saved in an sqlite3 database) and queries the twitch_API to see if they are streaming every x minutes.  If they are, then it makes sure they are in the Streamer Showcase Role (which is preset to "twitch" purple and pops up to the top of the logged in users).
 - add the countdown command for the beta (its been a hit).  Will rewrite the command with the release date post beta (and the PC release date after that? ... probably rewrite for future DLC?)
+- Refactored the twitch module so the code is cleaner (as I learn about async and await).
+- Updated the code so the twitch module produces stats.
 
 ToDo:
-- Refactor the twitch module so the code is cleaner (as I learn about async and await).
-- Update the code so the twitch module produces stats.
 - add try/catch/.catch blocks where needed to properly handle errors in the whole thing.
 - add the "say" module.
