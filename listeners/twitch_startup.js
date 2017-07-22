@@ -125,7 +125,8 @@ async function iterateMonitored(guild, list_channel, stream_role, stream_channel
                 if ( has_role == true && is_streaming == false ) {
                     log_message +=" ... Remove Streamer Showcase";
                     total_stopped_streaming++;
-                    ids_stopped_streaming.push(row.twitch_name, true);
+                    total_still_not_streaming++;
+                    ids_stopped_streaming.push(row.twitch_name);
                     current_member.removeRole(stream_role);
                 // else If the member doesn't have the role and is streaming ...
                 // add the role.
@@ -133,7 +134,8 @@ async function iterateMonitored(guild, list_channel, stream_role, stream_channel
                     log_message +=" ... Add Streamer Showcase";
                     current_member.addRole(stream_role);
                     total_started_streaming++;
-                    ids_started_streaming.push(row.twitch_name, true);
+                    total_still_streaming++;
+                    ids_started_streaming.push(row.twitch_name);
                 } else if ( has_role == true && is_streaming == true ) {
                     log_message +=" ... Keep Streamer Showcase";
                     total_still_streaming++;
