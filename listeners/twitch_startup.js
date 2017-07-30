@@ -190,10 +190,19 @@ async function twitchAPI(endpoint, params) {
         }, (err, res, body) => {
 //            console.log('api: err=%j', err);
 //            console.log('api: res=%j', res);
-//            console.log('api: body=%j', body);			
-            let object = JSON.parse(body);
-//            console.log('api: object=%j', object);
-            resolve(object);
+//            console.log('api: body=%j', body);
+
+            // if we have an error, then we assume that we don't
+            // have a body, so we process and output the error ...
+            if (err) {
+                console.log(`Error in Request: ${err}`);
+                
+            // otherwise we assume we have a body and keep processing through the event flow.
+            } else {
+                let object = JSON.parse(body);
+//              console.log('api: object=%j', object);
+               resolve(object);
+            }
         });
     });
 }
