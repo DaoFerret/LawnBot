@@ -20,7 +20,7 @@ var db = new sqlite3.Database('LawnBot.db');
 // Function to handle the interactive commands.
 async function exec(message, args) {
     // if the user is not authorized, then just ignore the Command
-    if (!is_authorized(message)){ 
+    if (! await is_authorized(message)){ 
         return message.reply('unauthorized user'); 
     }
     
@@ -34,6 +34,7 @@ async function exec(message, args) {
                             +'\t!twitch list - list the streamers/users being watched\n'
                             +'\t!twitch del <discord_id> - delete the listed discord user\n'
                             +'\t!twitch add <discord id> <twitch id>- add the user to the "Streamers Showcase" list\n'
+                            +'\t!twitch fix - truncate the last row of the DB **BE CAREFUL THIS REMOVES DATA**\n'
         );
     // List the users we're watching
     } else if (args.subcommand == 'list') {
@@ -57,7 +58,7 @@ async function exec(message, args) {
             message.channel.send('missing parameter: Usage\n!twitch add <discord id> <twitch id>- add the user to the "Streamers Showcase" list\n');
             return;
         }
-    
+
         // compute the User ID number:
         let arg_id = stripToID(args.param1);
 
@@ -76,6 +77,11 @@ async function exec(message, args) {
         //Perform DELETE operation
         db.run("DELETE from twitch_streams where server_id="+message.guild.id
                 +" and discord_name ='"+args.param1+"'");
+    } else if (args.subcommand == 'fix') {
+        message.channel.send('fix: server_id='+message.guild.id+' attempting to fix Twitch DB ... warning ... this will be deleting the last row in the table, so please check the contents using "list" after use');
+        //Perform DELETE operation
+        db.run("DELETE from twitch_streams where server_id="+message.guild.id
+                +" and table_id=(select max(table_id) from twitch_streams)");
     }
 //    return message.reply('');
 }
@@ -89,7 +95,8 @@ module.exports = new Command('twitch', exec, {
             type: [
                 ['add', 'new'],
                 ['del', 'delete'],
-                ['list', 'show']
+                ['list', 'show'],
+                ['fix']
             ],
             default: ''
         },
@@ -115,8 +122,10 @@ async function is_authorized(message){
     // if the user is the server owner then they are authorized
     // if the user has server "admin" permissions then they are authorized
     if (message.member.hasPermission("ADMINISTRATOR")) {
+//        message.channel.send('ADMIN Permissions Found');
         return true;
-    } else if(message.member.roles.has(roleMods.id)) {
+    } else if((roleMods) && (message.member.roles.has(roleMods.id))) {
+//        message.channel.send('Admin Role Found: '+roleMods);
         return true;
     }
     
@@ -130,85 +139,106 @@ async function is_authorized(message){
 // if a role is passed, then that is the role that is updated.
 // if a stream_channel is passed, then that is where a "Guess who's streaming" message goes
 async function iterateMonitored(guild, list_channel, stream_role, stream_channel, client) {
+    let log_message = "\n"+Date()+'list: server_id='+guild.id;
+    
+    console.log(log_message);
+//    if (list_channel) {
+//        list_channel.send(log_message);
+//    };
+
+    // define stats for summary message
+    var total_checked = 0;      // total entries checked for this server
+    var total_still_streaming = 0;
+    var total_still_not_streaming = 0;
+    var total_started_streaming = 0;
+    var total_stopped_streaming = 0;
+    // define accumulator variables for summary message
+    var ids_started_streaming = [];
+    var ids_stopped_streaming = [];
+
+
+    // pull the list of users from the database
+    db.all('SELECT discord_id, discord_name, twitch_name FROM twitch_streams where server_id="'
+                +guild.id+'"', async (err, rows) => {
+
+        for( var [index, row] of rows.entries()) {
+
+            // Check if the user is streaming
+            var is_streaming = await isStreaming(`streams/${row.twitch_name}`);
+
+            // Get the User Object based on the DiscordID
+            var current_user = await client.fetchUser(row.discord_id);
+
+            // Grab the current user object from the guild object
+            var current_member = await guild.fetchMember(current_user);
+
+            // Check if the current_member has the Streamer Role currently
+            var has_role = current_member.roles.has(stream_role.id);
+
+            log_message = Date()+" ["+index
+                    +"] DiscID="+row.discord_id
+                    +", twitchID="+row.twitch_name
+                    +", streaming="+is_streaming
+                    +", role="+has_role;
+
+            // increment the counter of rows checked
+            total_checked++;
+
+            // if a stream_role is defined then check if our user is streaming.
+            // if they are, make sure they have the role, if they aren't 
+            // make sure they don't.
+            if (stream_role) {
+                // If the member has the role and isn't streaming ... 
+                // remove the role.
+                if ( has_role == true && is_streaming == false ) {
+                    log_message +=" ... Remove Streamer Showcase";
+                    total_stopped_streaming++;
+                    total_still_not_streaming++;
+                    ids_stopped_streaming.push(row.twitch_name);
+                    current_member.removeRole(stream_role);
+                // else If the member doesn't have the role and is streaming ...
+                // add the role.
+                } else if ( has_role == false && is_streaming == true ) {
+                    log_message +=" ... Add Streamer Showcase";
+                    current_member.addRole(stream_role);
+                    total_started_streaming++;
+                    total_still_streaming++;
+                    ids_started_streaming.push(row.twitch_name);
+                } else if ( has_role == true && is_streaming == true ) {
+                    log_message +=" ... Keep Streamer Showcase";
+                    total_still_streaming++;
+                } else if ( has_role == false && is_streaming == false ) {
+                    log_message +=" ... Stay Normal User";
+                    total_still_not_streaming++;
+                }
+            } // if (stream_role)
+
+            console.log(guild.id+': '+log_message);
+        
+            // If we're outputting to a List command ... output
+            if (list_channel) {
+                list_channel.send(log_message); 
+            }
+
+        } // for loop
+
+        let summary_message = "\n"+Date()+'list: server_id='+guild.id +"\n";
+        summary_message += `Total TwitchIDs checked: ${total_checked} = Total Streaming: ${total_still_streaming} / Total Not Streaming: ${total_still_not_streaming}\n`;
+        summary_message += `Started Streaming (${total_started_streaming}): `+ids_started_streaming.join(', ')+`\n`;
+        summary_message += `Stopped Streaming (${total_stopped_streaming}): `+ids_stopped_streaming.join(', ')+`\n`;
+        console.log(summary_message);
+
         if (list_channel) {
-            list_channel.send('list: server_id='+guild.id);
-        };
-        // pull the list of users from the database
-        db.each('SELECT discord_id, discord_name, twitch_name FROM twitch_streams where server_id="'
-                +guild.id+'"', (err, row) => {
-
-        // Check if the user is streaming
-        var is_streaming = isStreaming(`streams/${row.twitch_name}`);
-//        twitchObj = twitchAPI(`streams/${row.twitch_name}`);
-//        serializeFromAPI(row.twitch_name);
-//        console.log('after log:'+twitchObj);
-
-        is_streaming.then( (result) => {
-            // Fetch the user object
-//            console.log(client);
-//            console.log('row.discord_id:');
-//            console.log(row.discord_id);
-
-            var current_user = client.fetchUser(row.discord_id);
-
-//            console.log('current_user:');
-//            console.log(current_user);
-            // if the current_user isn't at least a Promise ... return
-//            if (!current_user) { return; }
-
-            // Force the user_object promise to resolve before continuing
-            current_user.then( (result2) => {
-//                console.log('result (is_streaming):');
-//                console.log(result);
-//                console.log('result2 (current_user):');
-//                console.log(result2);
-
-                // Grab the current user object from the guild object
-                var current_member = guild.fetchMember(result2);
-
-                current_member.then( (result3) => {
-                    console.log("guild="+guild.id+", discord_id="+row.discord_id, ", current_member="+result2);
-//                    console.log(result3);
-
-                    var has_role = result3.roles.has(stream_role.id);
-
-                    // If we're outputting to a List command ... output
-                    if (list_channel) {
-                        list_channel.send("Discord User: "+row.discord_id+", Discord Name="+row.discord_name
-                        +", twitch_name="+row.twitch_name+", is_streaming="+result+", has_role="+has_role ); 
-                    }
-
-                    // if a stream_role is defined then check if our user is streaming.
-                    // if they are, make sure they have the role, if they aren't 
-                    // make sure they don't.
-                    if (stream_role) {
-                        // If the member has the role and isn't streaming ... 
-                        // remove the role.
-                        if ( has_role == true && result == false ) {
-                            list_channel.send("Remove Streamer Showcase");
-                            result3.removeRole(stream_role);
-                        // else If the member doesn't have the role and is streaming ...
-                        // add the role.
-                        } else if ( has_role == false && result == true ) {
-                            list_channel.send("Add Streamer Showcase");
-                            result3.addRole(stream_role);
-                        } else if ( has_role == true && result == true ) {
-                            list_channel.send("Keep Streamer Showcase");
-                        } else if ( has_role == false && result == false ) {
-                            list_channel.send("Stay Normal User");
-                        }
-
-                    } // if (stream_role)
-                });  // result3
-            });  // result2
-        });  // result
-    });  // db.each
+            list_channel.send(summary_message);
+        }
+    }); // db.all
 }
 
 function stripToID(var_in) {
         var_in = var_in.slice(2);
         var_in = var_in.slice(0, (var_in.length-1));
-	first_char = var_in.slice(0, 1);
+        first_char = var_in.slice(0, 1);
+
         // hack to handle MeatlessComic having a Snowflake ID that had a "!" in it.
         if (first_char == '!') {
             var_in = var_in.slice(1, (var_in.length));
@@ -234,14 +264,9 @@ exports.externalIterate = function(guild, list_channel, stream_role, stream_chan
 
 // function that checks streaming status
 async function isStreaming(twitch_name) {
-        let obj = twitchAPI(twitch_name);
-        return obj.then(function(result) {
-//            console.log('isStreaming:');
-//            console.log(result);
-            if (result.stream) { return true; }
-            else { return false; }
-            //return obj;
-        });
+        let obj = await twitchAPI(twitch_name);
+        if (obj.stream) { return true; }
+        else { return false; }
 }
 
 // helper function to take the Twitch tree and serialize it/clean it up

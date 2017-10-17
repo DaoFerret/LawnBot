@@ -10,8 +10,19 @@ var db = new sqlite3.Database('LawnBot.db');
 
 const DEBUG = 0;
 
-function exec() {
+//---------------------------------------------------
+// Variables that control the iterate loop control/output:
+//---------------------------------------------------
+const iterate_seconds = 120;
+const iterate_ms = iterate_seconds*1000;
 
+// Keeps track of how many iterate loops we've run.
+var iterate_count = 0;
+// Always output every 30 minutes
+const iterate_always_output = ((60*60)/iterate_seconds)/2;
+//---------------------------------------------------
+
+function exec() {
     // For each guild the bot is a member of:
     for (var [key, value] of this.client.guilds.entries()) {
         // Check if we have a bot-debug channel for debug output.
@@ -47,20 +58,19 @@ function exec() {
             }
         }
         
+        if (debug_channel) {
+            debug_channel.send(Date()+": LawnBot restarted");
+        }
+        
         //kick off a setInterval to call iterateMonitored function every minute.
-        setInterval(iterateMonitored, 120000, value, debug_channel, stream_role, stream_channel, this.client);
+        setInterval(iterateMonitored, iterate_ms, value, debug_channel, stream_role, stream_channel, this.client);
     }
-
-}
+};
 
 module.exports = new Listener('ready', exec, {
     emitter: 'client',
     eventName: 'ready'
 });
-
-async function theTime(value, debug_channel, stream_role, stream_channel, client) {
-    debug_channel.send(Date());
-}
 
 
 //---------------------------------------------------------------------------
@@ -71,8 +81,9 @@ async function theTime(value, debug_channel, stream_role, stream_channel, client
 // if a role is passed, then that is the role that is updated.
 // if a stream_channel is passed, then that is where a "Guess who's streaming" message goes
 async function iterateMonitored(guild, list_channel, stream_role, stream_channel, client) {
-    let log_message = "\n"+Date()+'list: server_id='+guild.id;
-    
+    iterate_count++;
+    let log_message = "\n"+Date()+'list: server_id='+guild.id+' Iteration:'+iterate_count;
+
     console.log(log_message);
 //    if (list_channel) {
 //        list_channel.send(log_message);
@@ -160,7 +171,12 @@ async function iterateMonitored(guild, list_channel, stream_role, stream_channel
         summary_message += `Stopped Streaming (${total_stopped_streaming}): `+ids_stopped_streaming.join(', ')+`\n`;
         console.log(summary_message);
 
-        if (list_channel) {
+        if (
+            list_channel && (
+                (total_started_streaming>0) || (total_stopped_streaming>0)
+                || (iterate_count%iterate_always_output==0)
+            )
+        ) {
             list_channel.send(summary_message);
         }
     }); // db.all
@@ -199,9 +215,15 @@ async function twitchAPI(endpoint, params) {
                 
             // otherwise we assume we have a body and keep processing through the event flow.
             } else {
+                try {
                 let object = JSON.parse(body);
-//              console.log('api: object=%j', object);
-               resolve(object);
+//                console.log('api: object=%j', object);
+                resolve(object);
+                } catch (e) {
+                    console.log("Error in JSON parsing");
+                    console.log(e);
+                    return;
+                }
             }
         });
     });
